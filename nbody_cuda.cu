@@ -22,6 +22,8 @@ Majority of code based off of program originally by Erik Saule.
 #include <cmath>
 #include <vector>
 
+#define THREADS_PER_BLOCK 1000;
+
 // Including all needed CUDA libraries.
 // #include <
 
@@ -188,6 +190,19 @@ __global__ void update_force(simulation &s, std::vector<std::vector<double>> *d)
     }
 }
 
+__global__ void apply_forces(simulation &s, std::vector<std::vector<double>> d, double time_step)
+{
+    size_t index = threadIdx.x + (blockIdx.x * THREADS_PER_BLOCK);
+
+    s.vel_x[index] += time_step * (s.mass[index] / s.force_x[index]);
+    s.vel_y[index] += time_step * (s.mass[index] / s.force_y[index]);
+    s.vel_z[index] += time_step * (s.mass[index] / s.force_z[index]);
+
+    s.pos_x[index] += time_step * s.vel_x[index];
+    s.pos_y[index] += time_step * s.vel_y[index];
+    s.pos_z[index] += time_step * s.vel_z[index];
+}
+
 // When it's time to dump the state of the simulation, call this function to print output.
 void dump_state(simulation &s) 
 {
@@ -318,8 +333,6 @@ void free_device(std::vector<std::vector<double>> d)
 }
 
 // Main driver function.
-
-#define THREADS_PER_BLOCK = 1000;
 int main(int argc, char* argv[])
 {
     // If there are not 5 arguments passed in, tell the user what output is allowed and close the function.
@@ -378,7 +391,9 @@ int main(int argc, char* argv[])
         // Additionally, copies the data back from the device back to the host and loads it back up later.
         if ( (step % dump_rate) == 0)
         {
+            device_to_host(s, device_params);
             dump_state(s);
+            host_to_device(s, device_params);
         }
 
         // Reset the state before making calculations.
@@ -388,9 +403,8 @@ int main(int argc, char* argv[])
         for (size_t i = 0; i < s.num_particles; i++)
         {
             update_force<<<1, THREADS_PER_BLOCK>>>(s, device_params);
+            apply_force<<<1, THREAD_PER_BLOCK>>>(s, device_params, step_size);
         }
-
-        device_to_host(s, device_params);
 
         // After all forces updated, apply forces to get velocities and new positions.
         for (size_t a = 0; a < s.num_particles; a++)
@@ -398,8 +412,7 @@ int main(int argc, char* argv[])
             apply_force(s, a, step_size);
             update_position(s, a, step_size);
         }
-        
-        host_to_device(s, device_params);
+
     }
     
     // Cuda free are the device variables.
