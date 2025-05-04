@@ -164,6 +164,30 @@ void update_position(simulation &s, size_t i, double time_step)
     s.pos_z[i] += s.vel_z[i] * time_step;
 }
 
+__global__ void update_force(simulation &s, std::vector<std::vector<double>> *d)
+{
+    size_t index = threadIdx.x + (blockIdx.x * blockDim.x);
+
+    double soft_factor = 0.01;
+    for (size_t i = 0; i < s.num_particles; i++) 
+    {
+        if (i != index)
+        {
+            double dist_sq = std::pow(s.pos_x[i]-s.pos_x[index], 2) + std::pow(s.pos_y[i] - s.pos_x[index], 2)
+                + std::pow(s.pos_z[i] - s.pos+z[index], 2);
+            double FORCE = GRAV * (s.mass[i] - s.mass[index]) / (dist_sq + soft_factor);
+
+            double dir_x = s.pos_x[i] - s.pos_x[index];
+            double dir_y = s.pos_y[i] - s.pos_y[index];
+            double dir_z = s.pos_z[i] - s.pos_y[index];
+
+            s.force_x[index] += dir_x * FORCE;
+            s.force_y[index] += dir_y * FORCE;
+            s.force_z[index] += dir_z * FORCE;
+        }
+    }
+}
+
 // When it's time to dump the state of the simulation, call this function to print output.
 void dump_state(simulation &s) 
 {
@@ -209,7 +233,93 @@ void load_from_file(simulation &s, std::string file)
 
 }
 
+// Creating the device variants of all the simulation vectors.
+std::vector<std::vector<double>> initialize_device_params (simulation &s)
+{
+    std::vector<double> *d_mass;
+
+    std::vector<double> *d_pos_x;
+    std::vector<double> *d_pos_y;
+    std::vector<double> *d_pos_z;
+    
+    std::vector<double> *d_force_x;
+    std::vector<double> *d_force_y;
+    std::vector<double> *d_force_z;
+
+    std::vector<double> *d_vel_x;
+    std::vector<double> *d_vel_y;
+    std::vector<double> *d_vel_z;
+
+    // Allocate all memory for each of the device pointers.
+    cudaMalloc((void**)&d_mass, sizeof(s.mass));
+    
+    cudaMalloc((void**)&d_pos_x, sizeof(s.pos_x));
+    cudaMalloc((void**)&d_pos_y, sizeof(s.pos_y));
+    cudaMalloc((void**)&d_pos_z, sizeof(s.pos_z));
+
+    cudaMalloc((void**)&d_force_x, sizeof(s.force_x));
+    cudaMalloc((void**)&d_force_y, sizeof(s.force_y));
+    cudaMalloc((void**)&d_force_z, sizeof(s.force_z));
+
+    cudaMalloc((void**)&d_vel_x, sizeof(s.vel_x));
+    cudaMalloc((void**)&d_vel_y, sizeof(s.vel_y));
+    cudaMalloc((void**)&d_vel_z, sizeof(s.vel_z));
+
+    std::vector<std::vector<double>> device_params;
+    device_params.push_back(*d_mass);
+    device_params.push_back(*d_pos_x);
+    device_params.push_back(*d_pos_y);
+    device_params.push_back(*d_pos_z);
+    device_params.push_back(*d_force_x);
+    device_params.push_back(*d_force_y);
+    device_params.push_back(*d_force_z);
+    device_params.push_back(*d_vel_x);
+    device_params.push_back(*d_vel_y);
+    device_params.push_back(*d_vel_z);
+
+    return device_params;
+}
+
+void host_to_device(simulation &s, std::vector<std::vector<double>> d) 
+{
+    cudaMemCpy(d.at(0), s.mass, sizeof(s.mass), cudaMemCpyHostToDevice);
+    cudaMemCpy(d.at(1), s.pos_x, sizeof(s.pos_x), cudaMemCpyHostToDevice);
+    cudaMemCpy(d.at(2), s.pos_y, sizeof(s.pos_y), cudaMemCpyHostToDevice);
+    cudaMemCpy(d.at(3), s.pos_z, sizeof(s.pos_z), cudaMemCpyHostToDevice);
+    cudaMemCpy(d.at(4), s.force_x, sizeof(s.force_x), cudaMemCpyHostToDevice);
+    cudaMemCpy(d.at(5), s.force_y, sizeof(s.force_y), cudaMemCpyHostToDevice);
+    cudaMemCpy(d.at(6), s.force_z, sizeof(s.force_z), cudaMemCpyHostToDevice);
+    cudaMemCpy(d.at(7), s.vel_x, sizeof(s.vel_x), cudaMemCpyHostToDevice);
+    cudaMemCpy(d.at(8), s.vel_y, sizeof(s.vel_y), cudaMemCpyHostToDevice);
+    cudaMemCpy(d.at(0), s.vel_z, sizeof(s.vel_z), cudaMemCpyHostToDevice);
+}
+
+
+void device_to_host(simulation &s, std::vector<std::vector<double>> d)
+{
+    cudaMemCpy(s.mass, d.at(0), sizeof(d.at(0)), cudaMemCpyDeviceToHost);
+    cudaMemCpy(s.pos_x, d.at(1), sizeof(d.at(1)), cudaMemCpyDeviceToHost);
+    cudaMemCpy(s.pos_y, d.at(2), sizeof(d.at(2)), cudaMemCpyDeviceToHost);
+    cudaMemCpy(s.pos_z, d.at(3), sizeof(d.at(3)), cudaMemCpyDeviceToHost);
+    cudaMemCpy(s.force_x, d.at(4), sizeof(d.at(4)), cudaMemCpyDeviceToHost);
+    cudaMemCpy(s.force_y, d.at(5), sizeof(d.at(5)), cudaMemCpyDeviceToHost);
+    cudaMemCpy(s.force_z, d.at(6), sizeof(d.at(6)), cudaMemCpyDeviceToHost);
+    cudaMemCpy(s.vel_x, d.at(7), sizeof(d.at(7)), cudaMemCpyDeviceToHost);
+    cudaMemCpy(s.vel_y, d.at(8), sizeof(d.at(8)), cudaMemCpyDeviceToHost);
+    cudaMemCpy(s.vel_z, d.at(9), sizeof(d.at(9)), cudaMemCpyDeviceToHost);
+}
+
+void free_device(std::vector<std::vector<double>> d)
+{
+    for (size_t i = 0; i < d.size(); i++)
+    {
+        cudaFree(d.at(i));
+    }
+}
+
 // Main driver function.
+
+#define THREADS_PER_BLOCK = 1000;
 int main(int argc, char* argv[])
 {
     // If there are not 5 arguments passed in, tell the user what output is allowed and close the function.
@@ -254,22 +364,10 @@ int main(int argc, char* argv[])
     }
 
     // Creating the device variants of all the simulation vectors.
-    std::vector<double> *d_mass;
+    std::vector<std::vector<double>> device_params = initialize_device_params(s);
 
-    std::vector<double> *d_pos_x;
-    std::vector<double> *d_pos_y;
-    std::vector<double> *d_pos_z;
-    
-    std::vector<double> *d_force_x;
-    std::vector<double> *d_force_y;
-    std::vector<double> *d_force_z;
-
-    std::vector<double> *d_vel_x;
-    std::vector<double> *d_vel_y;
-    std::vector<double> *d_vel_z;
-
-    // Allocate all memory for each of the device pointers.
-    
+    // Loading host vector data onto the device vectors.
+    host_to_device(s, device_params);
 
     // Running the simulation.
     // 
@@ -277,6 +375,7 @@ int main(int argc, char* argv[])
     {
         // If step is a multiple of dump_rate, dump the state.
         // Also dumps the very first state.
+        // Additionally, copies the data back from the device back to the host and loads it back up later.
         if ( (step % dump_rate) == 0)
         {
             dump_state(s);
@@ -288,17 +387,10 @@ int main(int argc, char* argv[])
         // For every two pairs of particles, calculate the forces they apply on one another.
         for (size_t i = 0; i < s.num_particles; i++)
         {
-            for (size_t j = 0; j < s.num_particles; j++)
-            {
-                // Need to prevent a particle from acting on itself.
-                if (i != j)
-                {
-                    update_force(s, i, j);
-                }
-            
-            }
-        
+            update_force<<<1, THREADS_PER_BLOCK>>>(s, device_params);
         }
+
+        device_to_host(s, device_params);
 
         // After all forces updated, apply forces to get velocities and new positions.
         for (size_t a = 0; a < s.num_particles; a++)
@@ -306,8 +398,12 @@ int main(int argc, char* argv[])
             apply_force(s, a, step_size);
             update_position(s, a, step_size);
         }
-    
+        
+        host_to_device(s, device_params);
     }
+    
+    // Cuda free are the device variables.
+    free_device(device_params);
     
     // End program.
     return 0;
