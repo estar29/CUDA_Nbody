@@ -18,18 +18,18 @@ random_seq.out: nbody_seq
 	date
 
 # CUDA implementation.
-nbody_cuda : nbody_cuda.cpp
-	g++ -O3 nbody_cuda.cpp -o nbody_cuda
+#nbody_cuda : nbody_cuda.cu
+#	nvcc
 
-solar_cuda.out: nbody_cuda
-	date
-	./nbody_cuda planet 200 5000000 10000 > solar_cuda.out # Should be faster!
-	date
+#solar_cuda.out: nbody_cuda
+#	date
+#	./nbody_cuda planet 200 5000000 10000 > solar_cuda.out # Should be faster!
+#	date
 
-solar_cuda.pdf : solar_cuda.out
-	python2 plot.py solar_cuda.out solar_cuda.pdf 1000
+#solar_cuda.pdf : solar_cuda.out
+#	python2 plot.py solar_cuda.out solar_cuda.pdf 1000
 
-random_cuda.out : nbody_cuda
-	date
-	./nbody_cuda 1000 1 10000 100 > random_cuda.out
-	date
+#random_cuda.out : nbody_cuda
+#	date
+#	./nbody_cuda 1000 1 10000 100 > random_cuda.out
+#	date
