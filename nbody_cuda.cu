@@ -22,15 +22,8 @@ Majority of code based off of program originally by Erik Saule.
 #include <cmath>
 #include <vector>
 
-#define THREADS_PER_BLOCK 1000;
-
-// Including all needed CUDA libraries.
-// #include <
-
 // Gravity constant.
 double GRAV = -6.674 * std::pow(10, -11);
-
-// Device/kernel operations: performing calculations on each particle separately.
 
 struct simulation
 {
@@ -176,7 +169,7 @@ __global__ void update_force(simulation &s, std::vector<std::vector<double>> *d)
         if (i != index)
         {
             double dist_sq = std::pow(s.pos_x[i]-s.pos_x[index], 2) + std::pow(s.pos_y[i] - s.pos_x[index], 2)
-                + std::pow(s.pos_z[i] - s.pos+z[index], 2);
+                + std::pow(s.pos_z[i] - s.pos_z[index], 2);
             double FORCE = GRAV * (s.mass[i] - s.mass[index]) / (dist_sq + soft_factor);
 
             double dir_x = s.pos_x[i] - s.pos_x[index];
@@ -192,7 +185,7 @@ __global__ void update_force(simulation &s, std::vector<std::vector<double>> *d)
 
 __global__ void apply_forces(simulation &s, std::vector<std::vector<double>> d, double time_step)
 {
-    size_t index = threadIdx.x + (blockIdx.x * THREADS_PER_BLOCK);
+    size_t index = threadIdx.x + (blockIdx.x * blockDim.x);
 
     s.vel_x[index] += time_step * (s.mass[index] / s.force_x[index]);
     s.vel_y[index] += time_step * (s.mass[index] / s.force_y[index]);
@@ -335,11 +328,11 @@ void free_device(std::vector<std::vector<double>> d)
 // Main driver function.
 int main(int argc, char* argv[])
 {
-    // If there are not 5 arguments passed in, tell the user what output is allowed and close the function.
-    if (argc != 5)
+    // If there are not 6 arguments passed in, tell the user what output is allowed and close the function.
+    if (argc != 6)
     {
         std::cout << "Please enter in the following parameters:\n"; 
-        std::cout << argv[0] << "<input: number of particles or file to pass in> <time step size> <number of time steps> <how often to dump state>";
+        std::cout << argv[0] << "<input: number of particles or file to pass in> <time step size> <number of time steps> <how often to dump state> <integer size of each CUDA block>";
         return -1;
     }
 
@@ -347,6 +340,7 @@ int main(int argc, char* argv[])
     double step_size = std::atof(argv[2]);
     size_t num_steps = std::atoi(argv[3]);
     size_t dump_rate = std::atoi(argv[4]);
+    size_t threads_per_block = std::atoi(argv[5]);
 
     // First initialize a simulation with just 1 particle (will not be used).
     simulation s(1);
@@ -382,6 +376,15 @@ int main(int argc, char* argv[])
     // Loading host vector data onto the device vectors.
     host_to_device(s, device_params);
 
+    size_t num_blocks = s.num_particles / threads_per_block;
+
+    // Rounding up if a remainder exists.
+    if (s.num_particles % threads_per_block != 0)
+    {
+        num_blocks += 1;
+    }
+
+
     // Running the simulation.
     // 
     for (size_t step = 0; step < num_steps; step++)
@@ -402,8 +405,8 @@ int main(int argc, char* argv[])
         // For every two pairs of particles, calculate the forces they apply on one another.
         for (size_t i = 0; i < s.num_particles; i++)
         {
-            update_force<<<1, THREADS_PER_BLOCK>>>(s, device_params);
-            apply_force<<<1, THREAD_PER_BLOCK>>>(s, device_params, step_size);
+            update_force<<<num_blocks, threads_per_block>>>(s, device_params);
+            apply_force<<<num_blocks, threads_per_block>>>(s, device_params, step_size);
         }
 
         // After all forces updated, apply forces to get velocities and new positions.
