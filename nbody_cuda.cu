@@ -12,6 +12,10 @@ https://en.cppreference.com/w/cpp/numeric/random/uniform_real_distribution (Unif
 https://en.cppreference.com/w/cpp/numeric/random/uniform_real_distribution (Normal distribution).
 https://cplusplus.com/reference/fstream/fstream/ (fstream library documentation).
 https://cplusplus.com/reference/fstream/ifstream/ (ifstream documentation).
+https://cplusplus.com/reference/chrono/high_resolution_clock/ (chrono's high resolution clock).
+https://cplusplus.com/reference/chrono/duration/ (chrono's duration object).
+https://cplusplus.com/reference/chrono/duration_cast/ (duration cast documentation).
+https://cplusplus.com/reference/chrono/milliseconds/ (chrono milliseconds).
 Majority of code based off of program originally by Erik Saule.
 */
 
@@ -21,6 +25,7 @@ Majority of code based off of program originally by Erik Saule.
 #include <random>
 #include <cmath>
 #include <vector>
+#include <chrono>
 
 // Gravity constant.
 double GRAV = -6.674 * std::pow(10, -11);
@@ -370,6 +375,14 @@ int main(int argc, char* argv[])
         }
     }
 
+    // Start timing the computation.
+    using std::chrono::high_resolution_clock;
+    using std::chrono::duration;
+    using std::chrono::duration_cast;
+    using std::chrono::milliseconds;
+
+    auto start_time = high_resolution_clock::now();
+
     // Creating the device variants of all the simulation vectors.
     std::vector<std::vector<double>> device_params = initialize_device_params(s);
 
@@ -420,6 +433,12 @@ int main(int argc, char* argv[])
     
     // Cuda free are the device variables.
     free_device(device_params);
+
+    auto end_time = high_resolution_clock::now();
+
+    duration<double, std::milli> total_time = end_time - start_time;
+
+    std::cout << "Computation time: " << total_time.count() << "\n";
     
     // End program.
     return 0;
