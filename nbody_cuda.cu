@@ -116,27 +116,6 @@ void init_solar(simulation &s)
     s.vel_z = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 }
 
-// Update force that a particle (from) applies on another particle (to).
-void update_force(simulation &s, size_t from, size_t to)
-{
-    double soft_factor = 0.01;
-    double square_distance = std::pow(s.pos_x[from]-s.pos_x[to], 2) + std::pow(s.pos_y[from]-s.pos_y[to], 2)
-        + std::pow(s.pos_z[from]-s.pos_z[to], 2);
-
-    // FORCE = GRAVITY * (m1*m2) / (d^2+sf)
-    double FORCE = GRAV * (s.mass[from]*s.mass[to]) / (square_distance + soft_factor);
-
-    // Directions the forces will apply from.
-    double dir_x = s.pos_x[from] - s.pos_x[to];
-    double dir_y = s.pos_y[from] - s.pos_y[to];
-    double dir_z = s.pos_z[from] - s.pos_z[to];
-
-    // Apply force in its calculated direction.
-    s.force_x[to] += dir_x*FORCE;
-    s.force_y[to] += dir_y*FORCE;
-    s.force_z[to] += dir_z*FORCE;
-}
-
 // Resetting all forces before running calculations on them.
 void reset_force(simulation &s)
 {
@@ -148,23 +127,7 @@ void reset_force(simulation &s)
     }
 }
 
-// Applying forces to get each particle's new velocity.
-void apply_force(simulation &s, size_t i, double time_step)
-{
-    s.vel_x[i] += (s.force_x[i] / s.mass[i]) * time_step;
-    s.vel_y[i] += (s.force_y[i] / s.mass[i]) * time_step;
-    s.vel_z[i] += (s.force_z[i] / s.mass[i]) * time_step;
-}
-
-// Using the new velocity values to update particle's position.
-void update_position(simulation &s, size_t i, double time_step)
-{
-    s.pos_x[i] += s.vel_x[i] * time_step;
-    s.pos_y[i] += s.vel_y[i] * time_step;
-    s.pos_z[i] += s.vel_z[i] * time_step;
-}
-
-__global__ void update_force(simulation &s, std::vector<std::vector<double>> *d)
+__global__ void update_forces(simulation &s, std::vector<std::vector<double>> &d)
 {
     size_t index = threadIdx.x + (blockIdx.x * blockDim.x);
 
@@ -188,7 +151,7 @@ __global__ void update_force(simulation &s, std::vector<std::vector<double>> *d)
     }
 }
 
-__global__ void apply_forces(simulation &s, std::vector<std::vector<double>> d, double time_step)
+__global__ void apply_forces(simulation &s, std::vector<std::vector<double>> &d, double time_step)
 {
     size_t index = threadIdx.x + (blockIdx.x * blockDim.x);
 
@@ -295,38 +258,38 @@ std::vector<std::vector<double>> initialize_device_params (simulation &s)
 
 void host_to_device(simulation &s, std::vector<std::vector<double>> d) 
 {
-    cudaMemCpy(d.at(0), s.mass, sizeof(s.mass), cudaMemCpyHostToDevice);
-    cudaMemCpy(d.at(1), s.pos_x, sizeof(s.pos_x), cudaMemCpyHostToDevice);
-    cudaMemCpy(d.at(2), s.pos_y, sizeof(s.pos_y), cudaMemCpyHostToDevice);
-    cudaMemCpy(d.at(3), s.pos_z, sizeof(s.pos_z), cudaMemCpyHostToDevice);
-    cudaMemCpy(d.at(4), s.force_x, sizeof(s.force_x), cudaMemCpyHostToDevice);
-    cudaMemCpy(d.at(5), s.force_y, sizeof(s.force_y), cudaMemCpyHostToDevice);
-    cudaMemCpy(d.at(6), s.force_z, sizeof(s.force_z), cudaMemCpyHostToDevice);
-    cudaMemCpy(d.at(7), s.vel_x, sizeof(s.vel_x), cudaMemCpyHostToDevice);
-    cudaMemCpy(d.at(8), s.vel_y, sizeof(s.vel_y), cudaMemCpyHostToDevice);
-    cudaMemCpy(d.at(0), s.vel_z, sizeof(s.vel_z), cudaMemCpyHostToDevice);
+    cudaMemcpy((void*)&d.at(0), (const void*)&s.mass, sizeof(s.mass), cudaMemcpyHostToDevice);
+    cudaMemcpy((void*)&d.at(1), (const void*)&s.pos_x, sizeof(s.pos_x), cudaMemcpyHostToDevice);
+    cudaMemcpy((void*)&d.at(2), (const void*)&s.pos_y, sizeof(s.pos_y), cudaMemcpyHostToDevice);
+    cudaMemcpy((void*)&d.at(3), (const void*)&s.pos_z, sizeof(s.pos_z), cudaMemcpyHostToDevice);
+    cudaMemcpy((void*)&d.at(4), (const void*)&s.force_x, sizeof(s.force_x), cudaMemcpyHostToDevice);
+    cudaMemcpy((void*)&d.at(5), (const void*)&s.force_y, sizeof(s.force_y), cudaMemcpyHostToDevice);
+    cudaMemcpy((void*)&d.at(6), (const void*)&s.force_z, sizeof(s.force_z), cudaMemcpyHostToDevice);
+    cudaMemcpy((void*)&d.at(7), (const void*)&s.vel_x, sizeof(s.vel_x), cudaMemcpyHostToDevice);
+    cudaMemcpy((void*)&d.at(8), (const void*)&s.vel_y, sizeof(s.vel_y), cudaMemcpyHostToDevice);
+    cudaMemcpy((void*)&d.at(0), (const void*)&s.vel_z, sizeof(s.vel_z), cudaMemcpyHostToDevice);
 }
 
 
 void device_to_host(simulation &s, std::vector<std::vector<double>> d)
 {
-    cudaMemCpy(s.mass, d.at(0), sizeof(d.at(0)), cudaMemCpyDeviceToHost);
-    cudaMemCpy(s.pos_x, d.at(1), sizeof(d.at(1)), cudaMemCpyDeviceToHost);
-    cudaMemCpy(s.pos_y, d.at(2), sizeof(d.at(2)), cudaMemCpyDeviceToHost);
-    cudaMemCpy(s.pos_z, d.at(3), sizeof(d.at(3)), cudaMemCpyDeviceToHost);
-    cudaMemCpy(s.force_x, d.at(4), sizeof(d.at(4)), cudaMemCpyDeviceToHost);
-    cudaMemCpy(s.force_y, d.at(5), sizeof(d.at(5)), cudaMemCpyDeviceToHost);
-    cudaMemCpy(s.force_z, d.at(6), sizeof(d.at(6)), cudaMemCpyDeviceToHost);
-    cudaMemCpy(s.vel_x, d.at(7), sizeof(d.at(7)), cudaMemCpyDeviceToHost);
-    cudaMemCpy(s.vel_y, d.at(8), sizeof(d.at(8)), cudaMemCpyDeviceToHost);
-    cudaMemCpy(s.vel_z, d.at(9), sizeof(d.at(9)), cudaMemCpyDeviceToHost);
+    cudaMemcpy((void*)&s.mass, (const void*)&d.at(0), sizeof(d.at(0)), cudaMemcpyDeviceToHost);
+    cudaMemcpy((void*)&s.pos_x, (const void*)&d.at(1), sizeof(d.at(1)), cudaMemcpyDeviceToHost);
+    cudaMemcpy((void*)&s.pos_y, (const void*)&d.at(2), sizeof(d.at(2)), cudaMemcpyDeviceToHost);
+    cudaMemcpy((void*)&s.pos_z, (const void*)&d.at(3), sizeof(d.at(3)), cudaMemcpyDeviceToHost);
+    cudaMemcpy((void*)&s.force_x, (const void*)&d.at(4), sizeof(d.at(4)), cudaMemcpyDeviceToHost);
+    cudaMemcpy((void*)&s.force_y, (const void*)&d.at(5), sizeof(d.at(5)), cudaMemcpyDeviceToHost);
+    cudaMemcpy((void*)&s.force_z, (const void*)&d.at(6), sizeof(d.at(6)), cudaMemcpyDeviceToHost);
+    cudaMemcpy((void*)&s.vel_x, (const void*)&d.at(7), sizeof(d.at(7)), cudaMemcpyDeviceToHost);
+    cudaMemcpy((void*)&s.vel_y, (const void*)&d.at(8), sizeof(d.at(8)), cudaMemcpyDeviceToHost);
+    cudaMemcpy((void*)&s.vel_z, (const void*)&d.at(9), sizeof(d.at(9)), cudaMemcpyDeviceToHost);
 }
 
 void free_device(std::vector<std::vector<double>> d)
 {
     for (size_t i = 0; i < d.size(); i++)
     {
-        cudaFree(d.at(i));
+        cudaFree((void*)&d.at(i));
     }
 }
 
@@ -418,15 +381,8 @@ int main(int argc, char* argv[])
         // For every two pairs of particles, calculate the forces they apply on one another.
         for (size_t i = 0; i < s.num_particles; i++)
         {
-            update_force<<<num_blocks, threads_per_block>>>(s, device_params);
-            apply_force<<<num_blocks, threads_per_block>>>(s, device_params, step_size);
-        }
-
-        // After all forces updated, apply forces to get velocities and new positions.
-        for (size_t a = 0; a < s.num_particles; a++)
-        {
-            apply_force(s, a, step_size);
-            update_position(s, a, step_size);
+            update_forces<<<num_blocks, threads_per_block>>>(s, device_params);
+            apply_forces<<<num_blocks, threads_per_block>>>(s, device_params, step_size);
         }
 
     }

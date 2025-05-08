@@ -1,5 +1,3 @@
-CXXFLAGS=-O3
-
 # Sequential implementation.
 nbody_seq: nbody_seq.cpp
 	g++ -O3 nbody_seq.cpp -o nbody_seq
@@ -19,7 +17,6 @@ random_seq.out: nbody_seq
 
 # CUDA implementation.
 nbody_cuda : nbody_cuda.cu
-	module load cuda/12.4
 	nvcc nbody_cuda.cu -o nbody_cuda
 
 solar_cuda.out: nbody_cuda
